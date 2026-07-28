@@ -19,9 +19,10 @@
 
 
 namespace Slic3r {
-// checks for other running instances and sends them argv,
-// if there is --single-instance argument or AppConfig is set to single_instance=1
-// returns true if this instance should terminate
+// checks for other running instances that share the same --datadir (data_dir())
+// and sends them argv, if there is --single-instance argument or AppConfig is set
+// to single_instance=1. returns true if this instance should terminate.
+// Different data directories may run concurrently.
 bool    instance_check(int argc, char** argv, bool app_config_single_instance);
 
 #if __APPLE__

@@ -187,6 +187,11 @@ void set_data_dir(const std::string &path);
 // Return a full path to the GUI resource files.
 const std::string& data_dir();
 
+// Normalize a data directory path for single-instance identity hashing.
+// Equivalent paths (relative vs absolute, trailing separators, case on Windows)
+// produce the same string so one --datadir maps to one instance.
+std::string normalize_data_dir_for_instance_hash(const std::string &dir);
+
 // BBL: true: succeed create or dir exists; false: fail to create
 bool makedir(const std::string path);
 

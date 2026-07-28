@@ -66,6 +66,7 @@
 #include <boost/shared_ptr.hpp>
 
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string/case_conv.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/nowide/fstream.hpp>
@@ -313,6 +314,26 @@ void set_data_dir(const std::string &dir)
 const std::string& data_dir()
 {
     return g_data_dir;
+}
+
+std::string normalize_data_dir_for_instance_hash(const std::string &dir)
+{
+    namespace fs = boost::filesystem;
+    boost::system::error_code ec;
+    fs::path p = fs::absolute(fs::path(dir), ec);
+    if (ec)
+        p = fs::path(dir);
+    ec.clear();
+    fs::path canonical = fs::canonical(p, ec);
+    if (!ec)
+        p = canonical;
+    std::string s = p.generic_string();
+    while (s.size() > 1 && (s.back() == '/' || s.back() == '\\'))
+        s.pop_back();
+#ifdef _WIN32
+    boost::algorithm::to_lower(s);
+#endif
+    return s;
 }
 
 std::string custom_shapes_dir()

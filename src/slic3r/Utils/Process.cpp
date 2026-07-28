@@ -13,6 +13,9 @@
 
 #include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/nowide/convert.hpp>
+
+#include <libslic3r/Utils.hpp>
 
 // For starting another OrcaSlicer instance on OSX.
 // Fails to compile on Windows on the build server.
@@ -35,14 +38,21 @@ enum class NewSlicerInstanceType {
 // Optionally load a 3MF, STL or a G-code on start.
 static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance_type, const std::vector<wxString> paths_to_open, bool single_instance)
 {
+	// Inherit the current data directory so the child joins the same single-instance group.
+	const std::string datadir_arg = data_dir().empty() ? std::string() : ("--datadir=" + data_dir());
 #ifdef _WIN32
 	wxString path;
 	wxFileName::SplitPath(wxStandardPaths::Get().GetExecutablePath(), &path, nullptr, nullptr, wxPATH_NATIVE);
 	path += "\\";
 	path += (instance_type == NewSlicerInstanceType::Slicer) ? "orca-slicer.exe" : "bambu-gcodeviewer.exe";
 	std::vector<const wchar_t*> args;
-	args.reserve(4);
+	wxString datadir_warg;
+	args.reserve(5);
 	args.emplace_back(path.wc_str());
+	if (!datadir_arg.empty()) {
+		datadir_warg = boost::nowide::widen(datadir_arg);
+		args.emplace_back(datadir_warg.wc_str());
+	}
 	if (!paths_to_open.empty()) {
 		for (const auto& file : paths_to_open)
 			args.emplace_back(file);
@@ -74,6 +84,8 @@ static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance
             args.emplace_back("--args");
 			if (instance_type == NewSlicerInstanceType::GCodeViewer)
 				args.emplace_back("--gcodeviewer");
+			if (!datadir_arg.empty())
+				args.emplace_back(datadir_arg);
 			if (instance_type == NewSlicerInstanceType::Slicer && single_instance)
 				args.emplace_back("--single-instance");
 			boost::process::spawn(bin_path, args);
@@ -85,7 +97,7 @@ static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance
 #else // Linux or Unix
 	{
 		std::vector<const char*> args;
-		args.reserve(3);
+		args.reserve(4);
 #ifdef __linux__
 		static const char* gcodeviewer_param = "--gcodeviewer";
 		{
@@ -105,11 +117,14 @@ static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance
 			my_path = (bin_path.parent_path() / ((instance_type == NewSlicerInstanceType::Slicer) ? "orca-slicer" : "bambu-gcodeviewer")).string();
 			args.emplace_back(my_path.c_str());
 		}
-		std::string to_open;
+		std::vector<std::string> path_args;
+		if (!datadir_arg.empty())
+			args.emplace_back(datadir_arg.c_str());
 		if (!paths_to_open.empty()) {
+			path_args.reserve(paths_to_open.size());
 			for (const auto& file : paths_to_open) {
-				to_open = into_u8(file);
-				args.emplace_back(to_open.c_str());
+				path_args.emplace_back(into_u8(file));
+				args.emplace_back(path_args.back().c_str());
 			}
 		}
 		if (instance_type == NewSlicerInstanceType::Slicer && single_instance)

@@ -13,6 +13,7 @@
 #include "boost/nowide/convert.hpp"
 #include <boost/log/trivial.hpp>
 #include <boost/filesystem/operations.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 #include <iostream>
 #include <unordered_map>
 #include <fcntl.h>
@@ -73,6 +74,12 @@ namespace instance_check_internal
 				ret.should_send = true;
 			else if (token == "--no-single-instance")
 				ret.should_send = false;
+			// Do not forward --datadir to the other instance: instance identity is already
+			// keyed by data_dir, and an existing directory path would be mis-handled as a model.
+			else if (token == "--datadir" || boost::starts_with(token, "--datadir=")) {
+				if (token == "--datadir" && i + 1 < argc)
+					++i;
+			}
 			else
 				arguments.emplace_back(token);
 		} 
@@ -90,7 +97,8 @@ namespace instance_check_internal
 	static HWND orca_slicer_hwnd;
 	static BOOL CALLBACK EnumWindowsProc(_In_ HWND   hwnd, _In_ LPARAM lParam)
 	{
-		// ORCA: Find the already-running instance by its window properties
+		// ORCA: Find the already-running instance by its data_dir-based instance hash
+		// stored in window properties (single instance per --datadir).
 		TCHAR className[256]; // class names are limited to 255 characters, see https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-wndclassa
 		if (GetClassName(hwnd, className, 256) == 0)
 			return true;
@@ -98,8 +106,8 @@ namespace instance_check_internal
 		if (std::wstring(className) != L"wxWindowNR")
 			return true;
 
-		// Check if the candidate window has the same instance hash. If the
-		// properties are missing, it is not an OrcaSlicer main window.
+		// Check if the candidate window has the same instance hash (derived from data_dir).
+		// If the properties are missing, it is not an OrcaSlicer main window.
 		HANDLE handle_minor = GetProp(hwnd, L"Instance_Hash_Minor");
 		HANDLE handle_major = GetProp(hwnd, L"Instance_Hash_Major");
 		if (handle_minor == nullptr || handle_major == nullptr)
@@ -295,45 +303,15 @@ namespace instance_check_internal
 
 bool instance_check(int argc, char** argv, bool app_config_single_instance)
 {
-	std::size_t hashed_path;
-#ifdef _WIN32
-	hashed_path = std::hash<std::string>{}(boost::filesystem::system_complete(argv[0]).string());
-#else
-	boost::system::error_code ec;
-#ifdef __linux__
-	// If executed by an AppImage, start the AppImage, not the main process.
-	// see https://docs.appimage.org/packaging-guide/environment-variables.html#id2
-	const char *appimage_env = std::getenv("APPIMAGE");
-	bool appimage_env_valid = false;
-	if (appimage_env) {
-		try {
-			auto appimage_path = boost::filesystem::canonical(boost::filesystem::path(appimage_env));
-			if (boost::filesystem::exists(appimage_path)) {
-				hashed_path = std::hash<std::string>{}(appimage_path.string());
-				appimage_env_valid = true;
-			}
-		} catch (std::exception &) {			
-		}
-		if (! appimage_env_valid)
-			BOOST_LOG_TRIVIAL(error) << "APPIMAGE environment variable was set, but it does not point to a valid file: " << appimage_env;
-	}
-	if (! appimage_env_valid)
-#endif // __linux__
-		hashed_path = std::hash<std::string>{}(boost::filesystem::canonical(boost::filesystem::system_complete(argv[0]), ec).string());
-	if (ec.value() > 0) { // canonical was not able to find the executable (can happen with appimage on some systems. Does it fail on Fuse file systems?)
-		ec.clear();
-		// Compose path with boost canonical of folder and filename
-		hashed_path = std::hash<std::string>{}(boost::filesystem::canonical(boost::filesystem::system_complete(argv[0]).parent_path(), ec).string() + "/" + boost::filesystem::system_complete(argv[0]).filename().string());
-		if (ec.value() > 0) {
-			// Still not valid, process without canonical
-			hashed_path = std::hash<std::string>{}(boost::filesystem::system_complete(argv[0]).string());
-		}
-	}
-#endif // _WIN32
+	// Single-instance identity is keyed by --datadir (resolved data_dir()), so each
+	// data directory may have at most one running GUI instance. This also drives the
+	// Windows window-property match and the macOS/Linux lock/DBus names.
+	const std::string normalized_data_dir = normalize_data_dir_for_instance_hash(data_dir());
+	const std::size_t hashed_path = std::hash<std::string>{}(normalized_data_dir);
 
 	std::string lock_name 	= std::to_string(hashed_path);
 	GUI::wxGetApp().set_instance_hash(hashed_path);
-	BOOST_LOG_TRIVIAL(debug) <<"full path: "<< lock_name;
+	BOOST_LOG_TRIVIAL(debug) << "instance data_dir: " << normalized_data_dir << ", hash: " << lock_name;
 	instance_check_internal::CommandLineAnalysis cla = instance_check_internal::process_command_line(argc, argv);
 	if (! cla.should_send.has_value())
 		cla.should_send = app_config_single_instance;
@@ -345,7 +323,8 @@ bool instance_check(int argc, char** argv, bool app_config_single_instance)
 	if (instance_check_internal::get_lock(lock_name + ".lock", data_dir() + "/cache/") && *cla.should_send) {
 #endif
 		instance_check_internal::send_message(cla.cl_string, lock_name);
-		BOOST_LOG_TRIVIAL(error) << "Instance check: Another instance found. This instance will terminate. Lock file of current running instance is located at " << data_dir() << 
+		BOOST_LOG_TRIVIAL(error) << "Instance check: Another instance found for data_dir \"" << normalized_data_dir
+			<< "\". This instance will terminate. Lock file of current running instance is located at " << data_dir() << 
 #ifdef _WIN32
 			"\\cache\\"
 #else // mac & linx
