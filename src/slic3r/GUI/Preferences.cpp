@@ -1620,9 +1620,9 @@ void PreferencesDialog::create_items()
     auto item_single_instance  = create_item_checkbox(_L("Allow only one OrcaSlicer instance"),
     #if __APPLE__
             _L("On OSX there is always only one instance of app running by default. However it is allowed to run multiple instances "
-                "of same app from the command line. In such case this settings will allow only one instance."),
+                "of same app from the command line. In such case this settings will allow only one instance per data directory (--datadir)."),
     #else
-            _L("If this is enabled, when starting OrcaSlicer and another instance of the same OrcaSlicer is already running, that instance will be reactivated instead."),
+            _L("If this is enabled, when starting OrcaSlicer and another instance with the same data directory (--datadir) is already running, that instance will be reactivated instead."),
     #endif
             "single_instance");
     g_sizer->Add(item_single_instance);

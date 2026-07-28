@@ -1068,7 +1068,8 @@ void GUI_App::post_init()
     BOOST_LOG_TRIVIAL(info) << "finished post_init";
 //BBS: remove the single instance currently
 #ifdef _WIN32
-    // Sets window property to mainframe so other instances can indentify it.
+    // Sets window property to mainframe so other instances can identify it
+    // by the data_dir-based instance hash (single instance per --datadir).
     OtherInstanceMessageHandler::init_windows_properties(mainframe, m_instance_hash_int);
 #endif //WIN32
 }
