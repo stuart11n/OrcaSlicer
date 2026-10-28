@@ -1,5 +1,6 @@
 #include "Process.hpp"
 
+#include <cstdlib>
 #include <libslic3r/AppConfig.hpp>
 
 #include "../GUI/GUI.hpp"
@@ -14,6 +15,11 @@
 #include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/nowide/convert.hpp>
+#include <vector>
+#include <string>
+#include <wx/utils.h>
+#include <wx/filedlg.h>
+#include <wx/string.h>
 
 #include <libslic3r/Utils.hpp>
 
@@ -24,6 +30,7 @@
     #include <boost/process/args.hpp>
 #endif
 
+#include <wx/filename.h>
 #include <wx/stdpaths.h>
 
 namespace Slic3r {
